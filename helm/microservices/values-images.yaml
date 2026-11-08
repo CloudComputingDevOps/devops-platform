@@ -1,0 +1,25 @@
+services:
+  gateway:
+    image:
+      repository: ghcr.io/cloudcomputingdevops/gateway
+      tag: sha-d712b92
+
+  administrative-data:
+    image:
+      repository: ghcr.io/cloudcomputingdevops/administrative-data-microservice
+      tag: sha-57cd697
+
+  users:
+    image:
+      repository: ghcr.io/cloudcomputingdevops/users-microservice
+      tag: sha-5ac9c40
+
+  trajectory:
+    image:
+      repository: ghcr.io/cloudcomputingdevops/trajectory-microservice
+      tag: sha-e2ba8e8
+
+  frontend:
+    image:
+      repository: ghcr.io/cloudcomputingdevops/frontend
+      tag: sha-f76175b

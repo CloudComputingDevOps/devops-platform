@@ -1,0 +1,44 @@
+replicaCount: 1
+
+services:
+  gateway:
+    image:
+      repository: ghcr.io/cloudcomputingdevops/gateway
+      tag: sha-d712b92
+    port: 3000
+    http: true
+    secretName: ""
+    env:
+      NATS_SERVERS: "nats://nats:4222"
+
+  administrative-data:
+    image:
+      repository: ghcr.io/cloudcomputingdevops/administrative-data-microservice
+      tag: sha-57cd697
+    port: 3001
+    http: false
+    secretName: administrative-data-secrets
+    env:
+      NATS_SERVERS: "nats://nats:4222"
+      EMAIL_FROM: "Talentcore"
+      EMAIL_FROM_ADDRESS: "notificaciones@dominio.com"
+
+  users:
+    image:
+      repository: ghcr.io/cloudcomputingdevops/users-microservice
+      tag: sha-5ac9c40
+    port: 3003
+    http: false
+    secretName: users-secrets
+    env:
+      NATS_SERVERS: "nats://nats:4222"
+
+  trajectory:
+    image:
+      repository: ghcr.io/cloudcomputingdevops/trajectory-microservice
+      tag: sha-e2ba8e8
+    port: 3002
+    http: false
+    secretName: trajectory-secrets
+    env:
+      NATS_SERVERS: "nats://nats:4222"

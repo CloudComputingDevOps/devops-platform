@@ -20,9 +20,10 @@ services:
     secretName: administrative-data-secrets
     env:
       NATS_SERVERS: "nats://nats:4222"
+      CLOUDINARY_NAME: "dq8fxqzch"
       EMAIL_FROM: "Talentcore"
-      EMAIL_FROM_ADDRESS: "notificaciones@dominio.com"
-
+      EMAIL_FROM_ADDRESS: "notificaciones@devcorebits.com"
+      
   users:
     image:
       repository: ghcr.io/cloudcomputingdevops/users-microservice
@@ -31,8 +32,13 @@ services:
     http: false
     secretName: users-secrets
     env:
+      CLOUDINARY_NAME: "dq8fxqzch"
       NATS_SERVERS: "nats://nats:4222"
-
+      SUPABASE_URL: "https://juaxululyelhiwfjsadc.supabase.co"
+      DATABASE_KEY: "sb_publishable_-g-kEbBXgHo9xiCENCkxtg_JCDm0QjT"
+      REDIRECT_URL: "http://localhost:5173/signup"
+      CLOUDINARY_API_KEY: "252735781918382"
+      CLOUDINARY_API_SECRET : "wyc-U28J0ph4dRRa6km-dOMf00A"
   trajectory:
     image:
       repository: ghcr.io/cloudcomputingdevops/trajectory-microservice

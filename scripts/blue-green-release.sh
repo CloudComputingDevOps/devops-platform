@@ -25,7 +25,7 @@ SMOKE_PATH="${SMOKE_PATH:-/api/areas}"
 
 if [[ -z "${NEW_TAG}" ]]; then
   # Si no se pasa tag por argumento, lee el tag de helm/microservices/values-images.yaml
-  NEW_TAG="$(awk '/gateway:/{f=1} f && /tag:/{print $2; exit}' "${ROOT_DIR}/helm/microservices/values-images.yaml" | tr -d '"'\'')"
+  NEW_TAG="$(awk '/gateway:/{f=1} f && /tag:/{print $2; exit}' "${ROOT_DIR}/helm/microservices/values-images.yaml" | tr -d "\"'")"
 fi
 
 if [[ -z "${NEW_TAG}" ]]; then

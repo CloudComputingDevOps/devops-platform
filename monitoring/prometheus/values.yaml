@@ -1,0 +1,46 @@
+# Valores adicionales para R1.4 (Prometheus) y R1.5 (Grafana).
+# Se aplican encima de monitoring/kube-prometheus-stack/values.yaml, que trae la
+# configuracion base, Alertmanager y las reglas de R1.6. Aqui solo va lo que se agrega;
+# scripts/install-monitoring.sh pasa los dos archivos a Helm en ese orden.
+
+prometheus:
+  prometheusSpec:
+    # La retencion de 7 dias ya esta en los valores base. Este limite evita llenar el disco.
+    retentionSize: 4GB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+
+    # Disco persistente: sin esto los datos se pierden cuando el pod se reinicia
+    # y la retencion de 7 dias no se cumple en la practica.
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard   # StorageClass por defecto de Minikube
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 1500Mi
+
+grafana:
+  defaultDashboardsTimezone: America/Bogota
+  # Carga como dashboard cualquier ConfigMap con la etiqueta grafana_dashboard=1
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+    datasources:
+      enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 200Mi
+    limits:
+      memory: 512Mi

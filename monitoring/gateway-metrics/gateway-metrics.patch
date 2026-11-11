@@ -1,0 +1,202 @@
+diff --git a/src/app.module.ts b/src/app.module.ts
+index 0b53173..b7015bc 100644
+--- a/src/app.module.ts
++++ b/src/app.module.ts
+@@ -3,9 +3,10 @@ import { AdministrativeDataModule } from './administrative-data/administrative-d
+ import { UsersModule } from './users/users.module';
+ import { TrajectoryModule } from './trajectory/trajectory.module';
+ import { HealthCheckModule } from './health-check/health-check.module';
++import { MetricsModule } from './metrics/metrics.module';
+ 
+ @Module({
+-  imports: [AdministrativeDataModule, UsersModule, TrajectoryModule, HealthCheckModule],
++  imports: [AdministrativeDataModule, UsersModule, TrajectoryModule, HealthCheckModule, MetricsModule],
+   controllers: [],
+   providers: [],
+ })
+diff --git a/src/metrics/metrics.controller.ts b/src/metrics/metrics.controller.ts
+new file mode 100644
+index 0000000..4bbec33
+--- /dev/null
++++ b/src/metrics/metrics.controller.ts
+@@ -0,0 +1,16 @@
++import { Controller, Get, Res } from '@nestjs/common';
++import { ApiExcludeController } from '@nestjs/swagger';
++import { Response } from 'express';
++import { MetricsService } from './metrics.service';
++
++@ApiExcludeController()
++@Controller('metrics')
++export class MetricsController {
++  constructor(private readonly metricsService: MetricsService) {}
++
++  @Get()
++  async getMetrics(@Res() res: Response): Promise<void> {
++    res.setHeader('Content-Type', this.metricsService.contentType);
++    res.send(await this.metricsService.getMetrics());
++  }
++}
+diff --git a/src/metrics/metrics.middleware.ts b/src/metrics/metrics.middleware.ts
+new file mode 100644
+index 0000000..6d264bc
+--- /dev/null
++++ b/src/metrics/metrics.middleware.ts
+@@ -0,0 +1,27 @@
++import { Injectable, NestMiddleware } from '@nestjs/common';
++import { NextFunction, Request, Response } from 'express';
++import { MetricsService } from './metrics.service';
++
++@Injectable()
++export class MetricsMiddleware implements NestMiddleware {
++  constructor(private readonly metricsService: MetricsService) {}
++
++  use(req: Request, res: Response, next: NextFunction): void {
++    const start = process.hrtime.bigint();
++
++    res.on('finish', () => {
++      // Se usa el patron de la ruta (/api/users/:id) y no la URL real,
++      // para no crear una serie distinta por cada id.
++      const routePath = (req.route as { path?: string } | undefined)?.path;
++      const route = routePath ? `${req.baseUrl}${routePath}` : 'sin_ruta';
++
++      // El propio scrape de Prometheus no cuenta como trafico de la app.
++      if (route.endsWith('/metrics')) return;
++
++      const seconds = Number(process.hrtime.bigint() - start) / 1e9;
++      this.metricsService.observe(req.method, route, res.statusCode, seconds);
++    });
++
++    next();
++  }
++}
+diff --git a/src/metrics/metrics.module.ts b/src/metrics/metrics.module.ts
+new file mode 100644
+index 0000000..2bc384c
+--- /dev/null
++++ b/src/metrics/metrics.module.ts
+@@ -0,0 +1,14 @@
++import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
++import { MetricsController } from './metrics.controller';
++import { MetricsMiddleware } from './metrics.middleware';
++import { MetricsService } from './metrics.service';
++
++@Module({
++  controllers: [MetricsController],
++  providers: [MetricsService],
++})
++export class MetricsModule implements NestModule {
++  configure(consumer: MiddlewareConsumer): void {
++    consumer.apply(MetricsMiddleware).forRoutes('{*splat}');
++  }
++}
+diff --git a/src/metrics/metrics.service.ts b/src/metrics/metrics.service.ts
+new file mode 100644
+index 0000000..740a16d
+--- /dev/null
++++ b/src/metrics/metrics.service.ts
+@@ -0,0 +1,53 @@
++import { Injectable } from '@nestjs/common';
++import {
++  Counter,
++  Histogram,
++  Registry,
++  collectDefaultMetrics,
++} from 'prom-client';
++
++@Injectable()
++export class MetricsService {
++  private readonly registry = new Registry();
++
++  private readonly requestsTotal: Counter<string>;
++  private readonly requestDuration: Histogram<string>;
++
++  constructor() {
++    collectDefaultMetrics({ register: this.registry });
++
++    this.requestsTotal = new Counter({
++      name: 'http_requests_total',
++      help: 'Total de peticiones HTTP atendidas por el Gateway',
++      labelNames: ['method', 'route', 'status_code'],
++      registers: [this.registry],
++    });
++
++    this.requestDuration = new Histogram({
++      name: 'http_request_duration_seconds',
++      help: 'Duracion de las peticiones HTTP del Gateway en segundos',
++      labelNames: ['method', 'route', 'status_code'],
++      buckets: [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
++      registers: [this.registry],
++    });
++  }
++
++  observe(
++    method: string,
++    route: string,
++    statusCode: number,
++    durationSeconds: number,
++  ): void {
++    const labels = { method, route, status_code: String(statusCode) };
++    this.requestsTotal.inc(labels);
++    this.requestDuration.observe(labels, durationSeconds);
++  }
++
++  get contentType(): string {
++    return this.registry.contentType;
++  }
++
++  getMetrics(): Promise<string> {
++    return this.registry.metrics();
++  }
++}
+diff --git a/src/metrics/metrics.spec.ts b/src/metrics/metrics.spec.ts
+new file mode 100644
+index 0000000..a8c6735
+--- /dev/null
++++ b/src/metrics/metrics.spec.ts
+@@ -0,0 +1,46 @@
++import { INestApplication } from '@nestjs/common';
++import { Test } from '@nestjs/testing';
++import * as request from 'supertest';
++import { HealthCheckModule } from '../health-check/health-check.module';
++import { MetricsModule } from './metrics.module';
++
++describe('Metricas de Prometheus', () => {
++  let app: INestApplication;
++
++  beforeAll(async () => {
++    const moduleRef = await Test.createTestingModule({
++      imports: [HealthCheckModule, MetricsModule],
++    }).compile();
++
++    app = moduleRef.createNestApplication();
++    await app.init();
++  });
++
++  afterAll(async () => {
++    await app.close();
++  });
++
++  it('expone /metrics en formato Prometheus', async () => {
++    const res = await request(app.getHttpServer()).get('/metrics');
++
++    expect(res.status).toBe(200);
++    expect(res.headers['content-type']).toContain('text/plain');
++    expect(res.text).toContain('process_cpu_seconds_total');
++  });
++
++  it('cuenta las peticiones y mide su duracion', async () => {
++    await request(app.getHttpServer()).get('/');
++    await request(app.getHttpServer()).get('/ruta-que-no-existe');
++
++    const res = await request(app.getHttpServer()).get('/metrics');
++
++    expect(res.text).toMatch(
++      /http_requests_total\{method="GET",route="\/",status_code="200"\} 1/,
++    );
++    expect(res.text).toMatch(
++      /http_requests_total\{method="GET",route="sin_ruta",status_code="404"\} 1/,
++    );
++    expect(res.text).toContain('http_request_duration_seconds_bucket');
++    expect(res.text).not.toMatch(/route="\/metrics"/);
++  });
++});

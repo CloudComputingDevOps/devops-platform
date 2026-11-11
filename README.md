@@ -2,7 +2,11 @@
 
 Documentación de la infraestructura Kubernetes del proyecto **CloudComputingDevOps**, correspondiente a la responsabilidad de **Infraestructura y Despliegue Base** (R1.3 y documentación R1.8).
 
-> **Alcance:** este documento describe el despliegue base con Minikube, Helm, NATS y cuatro microservicios. La implementación de CI/CD, runners, monitoreo y el despliegue del frontend pertenecen a otros frentes del proyecto.
+> **Alcance:** este documento describe el despliegue base con Minikube, Helm, NATS y cuatro microservicios. La implementación de CI/CD, runners y el despliegue del frontend pertenecen a otros frentes del proyecto.
+
+> **Guía paso a paso reproducible y guion de sustentación (R1.1 – R1.8):** consulta [`docs/guia-reproducible.md`](docs/guia-reproducible.md).
+> **Detalle técnico de Despliegue Avanzado, CD y Alertas (R1.6 / R1.7):** consulta [`docs/despliegue-avanzado-y-alertas.md`](docs/despliegue-avanzado-y-alertas.md).
+
 
 ## 1. Arquitectura
 
@@ -41,23 +45,25 @@ Las versiones reflejan el entorno de la práctica; no son necesariamente requisi
 
 ```text
 devops-platform/
-├── .github/
-│   └── workflows/           # Responsabilidad del equipo de CI/CD
 ├── docs/
-│   └── infraestructura.md   # Documentación complementaria, si aplica
+│   ├── infraestructura.md
+│   ├── despliegue-avanzado-y-alertas.md # CD, Blue-green, alertas, carga y fallos
+│   └── guia-reproducible.md             # Paso a paso completo y guion de demostración
 ├── helm/
-│   ├── microservices/
-│   │   ├── Chart.yaml
-│   │   ├── values.yaml
-│   │   └── templates/
-│   │       ├── deployment.yaml
-│   │       └── service.yaml
+│   ├── microservices/           # Incluye gateway blue/green + Ingress
 │   └── nats/
-│       └── values.yaml
 ├── kubernetes/
 │   └── namespace.yaml
 ├── monitoring/
+│   ├── kube-prometheus-stack/ # Prometheus + Alertmanager (3 reglas)
+│   └── alertmanager-webhook/  # Receptor de notificaciones
 ├── scripts/
+│   ├── deploy-stack.sh
+│   ├── install-monitoring.sh
+│   ├── blue-green-switch.sh
+│   ├── load/                    # wrk + k6
+│   └── failures/                # Escenarios de fallo
+├── secrets/examples/            # Plantillas .env (sin secretos reales)
 └── README.md
 ```
 
@@ -147,7 +153,10 @@ RESEND_API_KEY=REEMPLAZAR
 
 ```dotenv
 DATABASE_URL=REEMPLAZAR_CON_URL_REAL
+DATABASE_KEY=REEMPLAZAR
 DATABASE_ADMIN_KEY=REEMPLAZAR
+CLOUDINARY_API_KEY=REEMPLAZAR
+CLOUDINARY_API_SECRET=REEMPLAZAR
 ```
 
 **`~/secrets/devops/trajectory.env`**
@@ -341,10 +350,12 @@ En la práctica, Administrative Data y Users fallaron inicialmente por ausencia 
 - Prueba controlada de rolling update y rollback.
 - Revisión final de los Dockerfiles de cada servicio.
 
-**Fuera del alcance de esta responsabilidad:** pipelines CI/CD, runners, monitoreo y frontend.
+**Fuera del alcance de R1.3:** pipelines CI/CD, runners y frontend.
+
+**Despliegue avanzado y alertas (R1.6, R1.7):** ver [`docs/despliegue-avanzado-y-alertas.md`](docs/despliegue-avanzado-y-alertas.md).
 
 ---
 
 **Proyecto:** CloudComputingDevOps  
-**Componente documentado:** Infraestructura y Despliegue Base  
-**Requisitos relacionados:** R1.3 y R1.8
+**Componente documentado:** Infraestructura y Despliegue Base + Despliegue Avanzado/Alertas  
+**Requisitos relacionados:** R1.3, R1.6, R1.7 y R1.8

@@ -1,4 +1,38 @@
-replicaCount: 1
+replicaCount: 2
+
+imagePullSecrets: []
+
+rollingUpdate:
+  maxSurge: 1
+  maxUnavailable: 0
+
+# Límites para que la alerta PodCPUAlto (CPU > 80%) pueda evaluarse (R1.6).
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Blue-green (R1.7): dos slots del Gateway + Ingress.
+# El Service "gateway" apunta solo al color activo (activeColor).
+blueGreen:
+  enabled: true
+  activeColor: blue
+  blue:
+    tag: sha-d712b92
+    replicas: 2
+  green:
+    # Slot candidato para transición blue-green sin downtime.
+    tag: sha-d712b92
+    replicas: 2
+
+ingress:
+  enabled: true
+  className: nginx
+  host: gateway.local
+  annotations: {}
 
 services:
   gateway:
@@ -23,7 +57,7 @@ services:
       CLOUDINARY_NAME: "dq8fxqzch"
       EMAIL_FROM: "Talentcore"
       EMAIL_FROM_ADDRESS: "notificaciones@devcorebits.com"
-      
+
   users:
     image:
       repository: ghcr.io/cloudcomputingdevops/users-microservice
@@ -35,10 +69,9 @@ services:
       CLOUDINARY_NAME: "dq8fxqzch"
       NATS_SERVERS: "nats://nats:4222"
       SUPABASE_URL: "https://juaxululyelhiwfjsadc.supabase.co"
-      DATABASE_KEY: "sb_publishable_-g-kEbBXgHo9xiCENCkxtg_JCDm0QjT"
       REDIRECT_URL: "http://localhost:5173/signup"
-      CLOUDINARY_API_KEY: "252735781918382"
-      CLOUDINARY_API_SECRET : "wyc-U28J0ph4dRRa6km-dOMf00A"
+      # DATABASE_KEY, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET van en el Secret users-secrets
+
   trajectory:
     image:
       repository: ghcr.io/cloudcomputingdevops/trajectory-microservice

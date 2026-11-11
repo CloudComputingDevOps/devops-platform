@@ -1,0 +1,81 @@
+{{- if .Values.blueGreen.enabled }}
+{{- $gateway := index .Values.services "gateway" }}
+{{- $colors := list "blue" "green" }}
+{{- range $color := $colors }}
+{{- $slot := index $.Values.blueGreen $color }}
+{{- $tag := default $gateway.image.tag $slot.tag }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-{{ $color }}
+  labels:
+    app: gateway
+    version: {{ $color }}
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: cloudcomputingdevops
+    app.kubernetes.io/component: blue-green
+spec:
+  replicas: {{ default $.Values.replicaCount $slot.replicas }}
+  selector:
+    matchLabels:
+      app: gateway
+      version: {{ $color }}
+  strategy:
+    type: RollingUpdate
+    {{- with $.Values.rollingUpdate }}
+    rollingUpdate:
+      maxSurge: {{ .maxSurge }}
+      maxUnavailable: {{ .maxUnavailable }}
+    {{- end }}
+  template:
+    metadata:
+      labels:
+        app: gateway
+        version: {{ $color }}
+        app.kubernetes.io/name: gateway
+      annotations:
+        deployment.slot: {{ $color | quote }}
+        deployment.image: "{{ $gateway.image.repository }}:{{ $tag }}"
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: gateway
+          image: "{{ $gateway.image.repository }}:{{ $tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ $gateway.port }}
+          env:
+            - name: PORT
+              value: {{ $gateway.port | quote }}
+            - name: DEPLOYMENT_COLOR
+              value: {{ $color | quote }}
+            {{- range $key, $value := $gateway.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- if $gateway.secretName }}
+          envFrom:
+            - secretRef:
+                name: {{ $gateway.secretName }}
+          {{- end }}
+          {{- with $.Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ $gateway.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: {{ $gateway.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+{{- end }}
+{{- end }}

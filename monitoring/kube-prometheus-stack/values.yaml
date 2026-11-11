@@ -1,0 +1,170 @@
+# Valores públicos para prometheus-community/kube-prometheus-stack
+# Email SMTP se inyecta en install-monitoring.sh desde secrets/devops/alertmanager.env
+
+fullnameOverride: ""
+
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false
+    configReloaders: true
+    general: true
+    k8sContainerCpuUsageSecondsTotal: true
+    k8sContainerMemoryWorkingSetBytes: true
+    kubeApiserverAvailability: false
+    kubeApiserverBurnrate: false
+    kubeApiserverHistogram: false
+    kubeApiserverSlos: false
+    kubeControllerManager: false
+    kubelet: true
+    kubeProxy: false
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetes: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
+alertmanager:
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+      # smtp_* se sobrescriben con values-email.generated.yaml en la instalación
+    route:
+      receiver: devops-notifications
+      group_by: ["alertname", "namespace", "severity"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 1h
+      routes:
+        - matchers:
+            - alertname = "Watchdog"
+          receiver: "null"
+        - matchers:
+            - severity =~ "critical|warning"
+          receiver: devops-notifications
+    receivers:
+      - name: "null"
+      - name: devops-notifications
+        webhook_configs:
+          - url: http://alertmanager-webhook.monitoring.svc.cluster.local:8080/alert
+            send_resolved: true
+            max_alerts: 10
+        # email_configs se agregan en values-email.generated.yaml
+  alertmanagerSpec:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+
+prometheus:
+  enabled: true
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    retention: 7d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+    additionalScrapeConfigs:
+      - job_name: pushgateway
+        honor_labels: true
+        static_configs:
+          - targets: ["pushgateway.monitoring.svc.cluster.local:9091"]
+    additionalPrometheusRulesMap:
+      devops-platform:
+        groups:
+          - name: devops-integrante3.rules
+            interval: 30s
+            rules:
+              # R1.6 #1 — Pod caído / no Ready
+              - alert: PodCaido
+                expr: |
+                  sum by (namespace, pod) (
+                    kube_pod_status_ready{namespace="devops", condition="true"}
+                  ) == 0
+                  or
+                  sum by (namespace, pod) (
+                    kube_pod_status_phase{namespace="devops", phase=~"Failed|Unknown"}
+                  ) > 0
+                for: 1m
+                labels:
+                  severity: critical
+                  team: devops
+                annotations:
+                  summary: "Pod caído: {{ $labels.pod }}"
+                  description: "El pod {{ $labels.pod }} en devops no está Ready / está Failed|Unknown durante 1m."
+
+              # R1.6 #2 — CPU > 80% del límite
+              - alert: PodCPUAlto
+                expr: |
+                  (
+                    sum by (namespace, pod, container) (
+                      rate(container_cpu_usage_seconds_total{namespace="devops", container!="", container!="POD"}[5m])
+                    )
+                    /
+                    sum by (namespace, pod, container) (
+                      kube_pod_container_resource_limits{namespace="devops", resource="cpu", container!=""}
+                    )
+                  ) > 0.80
+                for: 2m
+                labels:
+                  severity: warning
+                  team: devops
+                annotations:
+                  summary: "CPU > 80% en {{ $labels.pod }}/{{ $labels.container }}"
+                  description: "Uso de CPU por encima del 80% del límite durante 2m."
+
+              # R1.6 #3 — Builds fallidos consecutivos (métrica en Pushgateway)
+              - alert: BuildFallidoConsecutivo
+                expr: |
+                  cicd_pipeline_consecutive_failures > 1
+                for: 1m
+                labels:
+                  severity: critical
+                  team: devops
+                annotations:
+                  summary: "Builds fallidos consecutivos"
+                  description: "Hay {{ $value }} fallos consecutivos de pipeline reportados en Pushgateway."
+
+grafana:
+  enabled: true
+  adminPassword: admin
+  defaultDashboardsEnabled: true
+  persistence:
+    enabled: false
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+
+kubeEtcd:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeProxy:
+  enabled: false

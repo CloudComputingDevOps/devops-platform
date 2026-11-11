@@ -5,10 +5,18 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ $name }}
+  labels:
+    app: {{ $name }}
+    {{- if and (eq $name "gateway") $.Values.blueGreen.enabled }}
+    bluegreen.active: {{ $.Values.blueGreen.activeColor | quote }}
+    {{- end }}
 spec:
   type: ClusterIP
   selector:
     app: {{ $name }}
+    {{- if and (eq $name "gateway") $.Values.blueGreen.enabled }}
+    version: {{ $.Values.blueGreen.activeColor }}
+    {{- end }}
   ports:
     - name: http
       port: {{ $service.port }}

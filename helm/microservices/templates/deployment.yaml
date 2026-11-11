@@ -1,4 +1,7 @@
 {{- range $name, $service := .Values.services }}
+{{- if and (eq $name "gateway") $.Values.blueGreen.enabled }}
+{{- /* Gateway se despliega en templates/gateway-blue-green.yaml */ -}}
+{{- else }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -6,6 +9,8 @@ metadata:
   name: {{ $name }}
   labels:
     app: {{ $name }}
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/part-of: cloudcomputingdevops
 spec:
   replicas: {{ $.Values.replicaCount }}
   selector:
@@ -17,6 +22,7 @@ spec:
     metadata:
       labels:
         app: {{ $name }}
+        app.kubernetes.io/name: {{ $name }}
     spec:
       containers:
         - name: {{ $name }}
@@ -36,4 +42,9 @@ spec:
             - secretRef:
                 name: {{ $service.secretName }}
           {{- end }}
+          {{- with $.Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
 {{- end }}

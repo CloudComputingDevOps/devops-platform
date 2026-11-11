@@ -1,7 +1,10 @@
-# Secrets
+# Secrets (nunca subir credenciales reales)
 .env
 .env.*
 !.env.example
+secrets/devops/
+!secrets/examples/
+!secrets/examples/**
 *.pem
 *.key
 *.p12
@@ -9,6 +12,7 @@
 kubeconfig
 kubeconfig.*
 !kubeconfig.example
+monitoring/kube-prometheus-stack/values-email.generated.yaml
 
 # Helm
 *.tgz
@@ -23,6 +27,10 @@ charts/*.tgz
 
 # Logs
 *.log
+
+# Load test outputs (keep directory)
+scripts/load/results/*
+!scripts/load/results/.gitkeep
 
 # Local files
 .vscode/

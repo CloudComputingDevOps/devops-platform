@@ -1,0 +1,129 @@
+# Receptor HTTP simple para evidenciar notificaciones de Alertmanager (R1.6).
+# Guarda cada alerta en stdout (kubectl logs) — suficiente para demo/evidencia.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/part-of: cloudcomputingdevops
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-webhook
+  namespace: monitoring
+  labels:
+    app: alertmanager-webhook
+data:
+  server.js: |
+    const http = require("http");
+    const port = Number(process.env.PORT || 8080);
+
+    const server = http.createServer((req, res) => {
+      if (req.method === "POST" && req.url && req.url.startsWith("/alert")) {
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk;
+          if (body.length > 1e6) req.destroy();
+        });
+        req.on("end", () => {
+          const stamp = new Date().toISOString();
+          console.log(`[${stamp}] ALERT RECEIVED path=${req.url}`);
+          try {
+            const payload = JSON.parse(body || "{}");
+            const alerts = payload.alerts || [];
+            console.log(`[${stamp}] status=${payload.status} alerts=${alerts.length}`);
+            alerts.forEach((a, i) => {
+              console.log(
+                `[${stamp}] #${i + 1} name=${a.labels && a.labels.alertname} ` +
+                  `severity=${a.labels && a.labels.severity} ` +
+                  `status=${a.status} ` +
+                  `summary=${a.annotations && a.annotations.summary}`
+              );
+            });
+          } catch (err) {
+            console.log(`[${stamp}] raw-body=${body}`);
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        });
+        return;
+      }
+
+      if (req.method === "GET" && (req.url === "/" || req.url === "/healthz")) {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end("ok");
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    server.listen(port, () => {
+      console.log(`alertmanager-webhook listening on :${port}`);
+    });
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager-webhook
+  namespace: monitoring
+  labels:
+    app: alertmanager-webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager-webhook
+  template:
+    metadata:
+      labels:
+        app: alertmanager-webhook
+    spec:
+      containers:
+        - name: webhook
+          image: node:20-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["node", "/app/server.js"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+          volumeMounts:
+            - name: app
+              mountPath: /app
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: app
+          configMap:
+            name: alertmanager-webhook
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager-webhook
+  namespace: monitoring
+  labels:
+    app: alertmanager-webhook
+spec:
+  type: ClusterIP
+  selector:
+    app: alertmanager-webhook
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

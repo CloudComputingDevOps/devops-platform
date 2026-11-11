@@ -74,6 +74,8 @@ kubectl -n "${NS_MONITORING}" rollout restart deployment/pipeline-exporter >/dev
 kubectl -n "${NS_MONITORING}" rollout status deployment/pipeline-exporter --timeout=3m
 
 echo "==> Metricas del Gateway (R1.4)"
+# El ServiceMonitor vive en el namespace de la aplicacion; se crea si aun no existe.
+kubectl apply -f "${ROOT_DIR}/kubernetes/namespace.yaml"
 kubectl apply -f "${ROOT_DIR}/monitoring/prometheus/servicemonitor-gateway.yaml"
 
 echo "==> Dashboard de Grafana (R1.5)"

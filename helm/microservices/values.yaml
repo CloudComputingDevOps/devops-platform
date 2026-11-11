@@ -1,4 +1,10 @@
-replicaCount: 1
+replicaCount: 2
+
+imagePullSecrets: []
+
+rollingUpdate:
+  maxSurge: 1
+  maxUnavailable: 0
 
 # Límites para que la alerta PodCPUAlto (CPU > 80%) pueda evaluarse (R1.6).
 resources:
@@ -16,11 +22,11 @@ blueGreen:
   activeColor: blue
   blue:
     tag: sha-d712b92
-    replicas: 1
+    replicas: 2
   green:
-    # Misma imagen al inicio; cambia el tag para demostrar el switch.
+    # Slot candidato para transición blue-green sin downtime.
     tag: sha-d712b92
-    replicas: 1
+    replicas: 2
 
 ingress:
   enabled: true

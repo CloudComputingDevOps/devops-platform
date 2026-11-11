@@ -16,7 +16,7 @@ const errorRate = new Rate("errors");
 const latency = new Trend("gateway_latency_ms");
 
 const BASE_URL = __ENV.BASE_URL || "http://gateway.local";
-const REQUEST_PATH = __ENV.REQUEST_PATH || "/";
+const REQUEST_PATH = __ENV.REQUEST_PATH || "/api/areas";
 const VUS = Number(__ENV.VUS || 10);
 const DURATION = __ENV.DURATION || "60s";
 

@@ -1,7 +1,7 @@
 {{- range $name, $service := .Values.services }}
 {{- if and (eq $name "gateway") $.Values.blueGreen.enabled }}
 {{- /* Gateway se despliega en templates/gateway-blue-green.yaml */ -}}
-{{- else }}
+{{- else if $service.port }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -12,18 +12,27 @@ metadata:
     app.kubernetes.io/name: {{ $name }}
     app.kubernetes.io/part-of: cloudcomputingdevops
 spec:
-  replicas: {{ $.Values.replicaCount }}
+  replicas: {{ default $.Values.replicaCount $service.replicas }}
   selector:
     matchLabels:
       app: {{ $name }}
   strategy:
     type: RollingUpdate
+    {{- with $.Values.rollingUpdate }}
+    rollingUpdate:
+      maxSurge: {{ .maxSurge }}
+      maxUnavailable: {{ .maxUnavailable }}
+    {{- end }}
   template:
     metadata:
       labels:
         app: {{ $name }}
         app.kubernetes.io/name: {{ $name }}
     spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ $name }}
           image: "{{ $service.image.repository }}:{{ $service.image.tag }}"

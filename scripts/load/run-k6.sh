@@ -24,7 +24,7 @@ EOF
 fi
 
 export BASE_URL="${BASE_URL:-http://gateway.local}"
-export REQUEST_PATH="${REQUEST_PATH:-/}"
+export REQUEST_PATH="${REQUEST_PATH:-/api/areas}"
 export VUS="${VUS:-10}"
 export DURATION="${DURATION:-60s}"
 STAMP="$(date +%Y%m%d-%H%M%S)"

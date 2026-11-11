@@ -10,7 +10,7 @@ RESULTS_DIR="${ROOT_DIR}/scripts/load/results"
 mkdir -p "${RESULTS_DIR}"
 
 BASE_URL="${BASE_URL:-http://gateway.local}"
-PATH_SUFFIX="${PATH_SUFFIX:-/}"
+PATH_SUFFIX="${PATH_SUFFIX:-/api/areas}"
 THREADS="${THREADS:-2}"
 CONNECTIONS="${CONNECTIONS:-20}"
 DURATION="${DURATION:-30s}"

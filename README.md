@@ -4,7 +4,8 @@ Documentación de la infraestructura Kubernetes del proyecto **CloudComputingDev
 
 > **Alcance:** este documento describe el despliegue base con Minikube, Helm, NATS y cuatro microservicios. La implementación de CI/CD, runners y el despliegue del frontend pertenecen a otros frentes del proyecto.
 
-> **Integrante 3 (R1.6 / R1.7):** blue-green + Ingress, Alertmanager (3 reglas + notificaciones), pruebas de carga y fallos simulados → guía paso a paso: [`docs/guia-paso-a-paso-integrante-3.md`](docs/guia-paso-a-paso-integrante-3.md).
+> **Guía paso a paso reproducible y guion de sustentación (R1.1 – R1.8):** consulta [`docs/guia-reproducible.md`](docs/guia-reproducible.md).
+> **Detalle técnico de Despliegue Avanzado, CD y Alertas (R1.6 / R1.7):** consulta [`docs/despliegue-avanzado-y-alertas.md`](docs/despliegue-avanzado-y-alertas.md).
 
 
 ## 1. Arquitectura
@@ -46,7 +47,8 @@ Las versiones reflejan el entorno de la práctica; no son necesariamente requisi
 devops-platform/
 ├── docs/
 │   ├── infraestructura.md
-│   └── integrante-3.md          # Blue-green, alertas, carga, fallos
+│   ├── despliegue-avanzado-y-alertas.md # CD, Blue-green, alertas, carga y fallos
+│   └── guia-reproducible.md             # Paso a paso completo y guion de demostración
 ├── helm/
 │   ├── microservices/           # Incluye gateway blue/green + Ingress
 │   └── nats/
@@ -350,7 +352,7 @@ En la práctica, Administrative Data y Users fallaron inicialmente por ausencia 
 
 **Fuera del alcance de R1.3:** pipelines CI/CD, runners y frontend.
 
-**Integrante 3:** ver `docs/integrante-3.md` (R1.6, R1.7).
+**Despliegue avanzado y alertas (R1.6, R1.7):** ver [`docs/despliegue-avanzado-y-alertas.md`](docs/despliegue-avanzado-y-alertas.md).
 
 ---
 

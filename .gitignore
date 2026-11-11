@@ -36,3 +36,5 @@ scripts/load/results/*
 .vscode/
 .idea/
 .DS_Store
+/kubectl
+/minikube-linux-amd64

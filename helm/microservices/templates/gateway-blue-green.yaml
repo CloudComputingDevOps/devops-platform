@@ -23,6 +23,11 @@ spec:
       version: {{ $color }}
   strategy:
     type: RollingUpdate
+    {{- with $.Values.rollingUpdate }}
+    rollingUpdate:
+      maxSurge: {{ .maxSurge }}
+      maxUnavailable: {{ .maxUnavailable }}
+    {{- end }}
   template:
     metadata:
       labels:
@@ -33,6 +38,10 @@ spec:
         deployment.slot: {{ $color | quote }}
         deployment.image: "{{ $gateway.image.repository }}:{{ $tag }}"
     spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: gateway
           image: "{{ $gateway.image.repository }}:{{ $tag }}"

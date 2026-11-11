@@ -44,9 +44,13 @@ helm upgrade --install nats nats/nats \
 
 echo "==> Microservicios (blue-green gateway + Ingress)"
 kubectl delete deploy gateway -n "${NS}" --ignore-not-found
-helm lint "${ROOT_DIR}/helm/microservices"
+helm lint "${ROOT_DIR}/helm/microservices" \
+  -f "${ROOT_DIR}/helm/microservices/values.yaml" \
+  -f "${ROOT_DIR}/helm/microservices/values-images.yaml"
 helm upgrade --install microservices "${ROOT_DIR}/helm/microservices" \
   --namespace "${NS}" \
+  -f "${ROOT_DIR}/helm/microservices/values.yaml" \
+  -f "${ROOT_DIR}/helm/microservices/values-images.yaml" \
   --wait \
   --timeout 5m
 

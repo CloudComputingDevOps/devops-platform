@@ -10,7 +10,6 @@ metadata:
     app.kubernetes.io/part-of: cloudcomputingdevops
     app.kubernetes.io/component: blue-green
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}

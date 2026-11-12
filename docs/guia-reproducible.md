@@ -157,14 +157,16 @@ grep -q "gateway.local" /etc/hosts \
 ### Paso 4 — Instalar el stack de Monitoreo y Alertmanager (`install-monitoring.sh`)
 
 ```bash
+export GITHUB_TOKEN=ghp_REEMPLAZAR   # opcional, ver monitoring/README.md
 ./scripts/install-monitoring.sh
 ```
 
 Este comando instala en el namespace `monitoring`:
-- **Prometheus** (retención de 7 días y scrape a pods, nodos y Pushgateway).
+- **Prometheus** (retención de 7 días en disco persistente y scrape a pods, nodos, Gateway, pipeline y Pushgateway).
 - **Alertmanager** con las 3 reglas personalizadas (`PodCaido`, `PodCPUAlto`, `BuildFallidoConsecutivo`), salida SMTP TLS (Resend) y receptor `alertmanager-webhook`.
 - **Prometheus Pushgateway** para métricas del pipeline CI/CD.
-- **Grafana** base.
+- **Exportador del pipeline** (`pipeline-exporter`), que consulta la API de GitHub y publica la duración y el resultado de los builds.
+- **Grafana** con el dashboard "Plataforma DevOps: aplicacion y pipeline" (12 paneles) cargado desde `monitoring/grafana/dashboards/devops-platform.json`.
 
 ### Paso 5 — Activar el Self-Hosted Runner para CD automático
 
@@ -341,6 +343,73 @@ kubectl -n monitoring logs deploy/alertmanager-webhook --tail=200 > docs/evidenc
 
 ---
 
+### Subpunto 5: Métricas en Prometheus y Dashboard de Grafana (`R1.4` y `R1.5`, Integrante 4)
+
+**Preparación antes de grabar este subpunto (dejar abierta 1 terminal auxiliar y el navegador):**
+
+- **Terminal auxiliar (Port-forward de Prometheus y Grafana)**:
+  ```bash
+  kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090 &
+  kubectl -n monitoring port-forward svc/monitoring-grafana 3001:80 &
+  ```
+  Abrir en el navegador:
+  - Prometheus Targets: `http://localhost:9090/targets`
+  - Grafana: `http://localhost:3001` (usuario `admin`, clave `admin`)
+
+  *(Si el navegador está en el computador anfitrión y no en la VM, agregar `--address 0.0.0.0` a cada port-forward y usar `http://192.168.100.3` en lugar de `localhost`).*
+
+#### Parte A: Prometheus recolecta métricas de pods, nodos y pipeline (`R1.4`)
+
+1. Mostrar que todo el stack está en ejecución y que Prometheus tiene disco persistente y retención de 7 días:
+   ```bash
+   kubectl -n monitoring get pods
+   kubectl -n monitoring get pvc
+   kubectl -n monitoring get prometheus -o jsonpath='{.items[0].spec.retention}{"\n"}'
+   ```
+   - Todos los pods en `Running`, el PVC de Prometheus en `Bound` y el último comando imprime `7d`.
+2. En `http://localhost:9090/targets` mostrar en estado `UP` los targets de `kubelet`, `node-exporter`, `kube-state-metrics`, `pipeline-exporter` y `gateway`.
+3. En la pestaña **Graph** de Prometheus ejecutar una consulta por cada origen de datos:
+   ```promql
+   sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="devops", container!=""}[5m]))
+   node_memory_MemAvailable_bytes
+   ci_workflow_success_ratio
+   ci_workflow_last_run_duration_seconds
+   ```
+   - La primera muestra CPU por pod, la segunda memoria del nodo y las dos últimas el pipeline de cada repositorio.
+4. Explicar de dónde salen las métricas del pipeline: los runners de GitHub no alcanzan el clúster dentro de la VM, por eso `pipeline-exporter` consulta la API de GitHub desde el clúster.
+   ```bash
+   kubectl -n monitoring logs deploy/pipeline-exporter --tail=20
+   ```
+
+#### Parte B: Dashboard de Grafana (`R1.5`)
+
+1. En Grafana abrir **Dashboards** y entrar a "Plataforma DevOps: aplicacion y pipeline".
+2. Recorrer las cuatro secciones mostrando datos en vivo:
+   - **Resumen**: pods en ejecución, reinicios, errores 5xx y éxito del pipeline.
+   - **Recursos por pod**: CPU y memoria por pod.
+   - **Aplicación**: latencia p50/p95/p99, tasa de errores HTTP y peticiones por segundo.
+   - **Pipeline CI**: duración de los builds, tasa de éxito por repositorio y último build.
+3. Generar tráfico para que los paneles de la sección Aplicación se muevan durante la grabación:
+   ```bash
+   DURATION=60s ./scripts/load/run-k6.sh
+   ```
+4. Mostrar que el dashboard está versionado en el repositorio y que Grafana lo carga desde un ConfigMap:
+   ```bash
+   ls -l monitoring/grafana/dashboards/devops-platform.json
+   kubectl -n monitoring get configmap -l grafana_dashboard=1
+   ```
+
+> Los paneles de la sección Aplicación necesitan que la imagen desplegada del Gateway exponga `/api/metrics` (cambio descrito en `monitoring/gateway-metrics/`). Si el target `gateway` aparece `DOWN` con error 404, la imagen todavía no lo incluye.
+
+Guardar las evidencias para el repositorio:
+```bash
+kubectl -n monitoring get pods,pvc > docs/evidencias/r1.4-prometheus-estado.txt
+curl -s http://localhost:9090/api/v1/targets | grep -o '"health":"[a-z]*"' | sort | uniq -c > docs/evidencias/r1.4-targets.txt
+```
+Las capturas de los targets y del dashboard se guardan en la misma carpeta (`r1.4-targets.png`, `r1.5-dashboard.png`).
+
+---
+
 ## 5. Resumen de Comandos de Verificación Rápida
 
 | Verificación | Comando |
@@ -350,3 +419,6 @@ kubectl -n monitoring logs deploy/alertmanager-webhook --tail=200 > docs/evidenc
 | Liberación Blue-Green de nueva imagen | `./scripts/blue-green-release.sh <sha-tag>` |
 | Estado de Prometheus y Alertmanager | `kubectl get pods,prometheusrule -n monitoring` |
 | Historial de notificaciones recibidas | `kubectl -n monitoring logs deploy/alertmanager-webhook --tail=100` |
+| Retención y disco de Prometheus | `kubectl -n monitoring get pvc` y `kubectl -n monitoring get prometheus -o jsonpath='{.items[0].spec.retention}'` |
+| Dashboard cargado en Grafana | `kubectl -n monitoring get configmap -l grafana_dashboard=1` |
+| Métricas del pipeline | `kubectl -n monitoring logs deploy/pipeline-exporter --tail=20` |

@@ -1,0 +1,19 @@
+# Le indica a Prometheus que recoja las metricas HTTP del Gateway.
+# Requiere que el Service "gateway" tenga la etiqueta app=gateway
+# (helm/microservices/templates/service.yaml) y que la imagen del Gateway
+# incluya el modulo de metricas (ver monitoring/gateway-metrics).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gateway
+  namespace: devops
+  labels:
+    app.kubernetes.io/part-of: cloudcomputingdevops
+spec:
+  selector:
+    matchLabels:
+      app: gateway
+  endpoints:
+    - port: http
+      path: /api/metrics
+      interval: 15s

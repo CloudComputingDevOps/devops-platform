@@ -1,178 +1,177 @@
 name: CD - Deploy & Blue-Green Release
-
 on:
   push:
-    branches:
-      - main
-      - develop
-      - dp
+    branches: [main, develop, dp]
     paths:
-      - "helm/**"
-      - "kubernetes/**"
-      - "monitoring/**"
-      - "scripts/**"
-      - ".github/workflows/cd.yml"
+      - 'helm/**'
+      - 'kubernetes/**'
+      - 'monitoring/**'
+      - 'scripts/**'
+      - '.github/workflows/cd.yml'
   repository_dispatch:
-    types:
-      - deploy-service
+    types: [deploy-service]
   workflow_dispatch:
     inputs:
       strategy:
-        description: "Estrategia de despliegue"
+        description: Estrategia de despliegue
         required: true
-        default: "blue-green"
+        default: blue-green
         type: choice
-        options:
-          - blue-green
-          - rolling
-          - full-stack
+        options: [blue-green, rolling, full-stack]
       gateway_tag:
-        description: "Tag de imagen para Gateway (vacío = usar values-images.yaml)"
+        description: Tag nuevo de Gateway (requerido para Blue-Green manual)
         required: false
-        default: ""
         type: string
       target_color:
-        description: "Forzar color destino en Blue-Green (vacío = automático al inactivo)"
+        description: Color destino (vacío = inactivo)
         required: false
-        default: ""
         type: choice
-        options:
-          - ""
-          - green
-          - blue
+        options: ['', green, blue]
       run_load_verification:
-        description: "Ejecutar prueba de carga sin caída durante el switch (R1.7)"
+        description: Ejecutar prueba de carga opcional
         required: false
         default: false
         type: boolean
-
 concurrency:
   group: cd-devops-platform
   cancel-in-progress: false
-
 env:
   KUBE_NAMESPACE: devops
   MONITORING_NAMESPACE: monitoring
-
 jobs:
   validate-manifests:
-    name: "1. Lint & Render Helm Charts"
+    name: '1. Lint & Render Helm Charts'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-
-      - name: Lint microservices chart
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint and render
         run: |
-          helm lint ./helm/microservices \
-            -f ./helm/microservices/values.yaml \
-            -f ./helm/microservices/values-images.yaml
-
-      - name: Render Kubernetes manifests (Blue-Green + Ingress + Replicas)
+          helm lint ./helm/microservices -f ./helm/microservices/values.yaml -f ./helm/microservices/values-images.yaml
+          helm template microservices ./helm/microservices -n "$KUBE_NAMESPACE" -f ./helm/microservices/values.yaml -f ./helm/microservices/values-images.yaml >/tmp/rendered-microservices.yaml
+      - name: Validate scripts
         run: |
-          helm template microservices ./helm/microservices \
-            --namespace "${KUBE_NAMESPACE}" \
-            -f ./helm/microservices/values.yaml \
-            -f ./helm/microservices/values-images.yaml > /tmp/rendered-microservices.yaml
-          grep -E "^kind:|^  name:" /tmp/rendered-microservices.yaml
-
-      - name: Validate shell scripts syntax
-        run: |
-          bash -n scripts/deploy-stack.sh
-          bash -n scripts/blue-green-switch.sh
           bash -n scripts/blue-green-release.sh
+          bash -n scripts/blue-green-switch.sh
+          bash -n scripts/deploy-stack.sh
           bash -n scripts/install-monitoring.sh
           bash -n scripts/report-pipeline-metric.sh
           bash -n scripts/failures/simulate-failures.sh
           bash -n scripts/load/blue-green-during-load.sh
-
   deploy-cluster:
-    name: "2. Continuous Delivery (K8s Rolling + Blue-Green + Alerts)"
+    name: '2. Continuous Delivery'
     needs: validate-manifests
     runs-on: self-hosted
     steps:
       - name: Record start timestamp
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Verify cluster & tools
+      - uses: actions/checkout@v4
+      - name: Verify cluster and tools
         run: |
           chmod +x scripts/*.sh scripts/load/*.sh scripts/failures/*.sh
           kubectl cluster-info
           kubectl get nodes
           helm version --short
-
-      - name: Ensure namespace & secrets
+      - name: Ensure namespace and secrets
+        shell: bash
         run: |
+          set -euo pipefail
           kubectl apply -f kubernetes/namespace.yaml
-          SECRETS_DIR="${HOME}/secrets/devops"
-          if [[ -d "./secrets/devops" ]]; then
-            SECRETS_DIR="./secrets/devops"
-          fi
-          if [[ -d "${SECRETS_DIR}" ]]; then
-            for svc in administrative-data users trajectory; do
-              if [[ -f "${SECRETS_DIR}/${svc}.env" ]]; then
-                kubectl create secret generic "${svc}-secrets" \
-                  -n "${KUBE_NAMESPACE}" \
-                  --from-env-file="${SECRETS_DIR}/${svc}.env" \
-                  --dry-run=client -o yaml | kubectl apply -f -
-              fi
-            done
-          fi
-
-      - name: Deploy base stack & Monitoring/Alertmanager (if full-stack or initial)
-        if: ${{ inputs.strategy == 'full-stack' }}
+          SECRETS_DIR="$HOME/secrets/devops"
+          for svc in administrative-data users trajectory; do
+            if [[ -f "$SECRETS_DIR/$svc.env" ]]; then
+              kubectl create secret generic "$svc-secrets" -n "$KUBE_NAMESPACE" \
+                --from-env-file="$SECRETS_DIR/$svc.env" --dry-run=client -o yaml | kubectl apply -f -
+            fi
+            kubectl get secret "$svc-secrets" -n "$KUBE_NAMESPACE" >/dev/null
+          done
+      - name: Deploy base stack and monitoring
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy == 'full-stack' }}
         run: |
           ./scripts/deploy-stack.sh
           ./scripts/install-monitoring.sh
-
-      - name: Rolling Update Microservices (R1.3)
+      - name: Resolve deployment request
+        id: request
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PAYLOAD_SERVICE: ${{ github.event.client_payload.service }}
+          PAYLOAD_TAG: ${{ github.event.client_payload.tag }}
+          MANUAL_STRATEGY: ${{ inputs.strategy }}
+          MANUAL_TAG: ${{ inputs.gateway_tag }}
+          MANUAL_COLOR: ${{ inputs.target_color }}
         run: |
-          ACTIVE_COLOR="$(kubectl get svc gateway -n "${KUBE_NAMESPACE}" -o jsonpath='{.spec.selector.version}' 2>/dev/null || echo "blue")"
-          helm upgrade --install microservices ./helm/microservices \
-            --namespace "${KUBE_NAMESPACE}" \
-            -f ./helm/microservices/values.yaml \
-            -f ./helm/microservices/values-images.yaml \
-            --set "blueGreen.activeColor=${ACTIVE_COLOR}" \
-            --wait \
-            --timeout 5m
-
-      - name: Blue-Green Release on Gateway (R1.7)
-        if: ${{ inputs.strategy != 'rolling' }}
+          set -euo pipefail
+          SERVICE=""; TAG=""; MODE="reconcile"
+          if [[ "$EVENT_NAME" == repository_dispatch ]]; then
+            SERVICE="$PAYLOAD_SERVICE"; TAG="$PAYLOAD_TAG"
+            [[ -n "$SERVICE" && -n "$TAG" ]] || { echo 'Dispatch requiere client_payload.service y client_payload.tag' >&2; exit 1; }
+            case "$SERVICE" in
+              gateway) MODE=gateway ;;
+              users|trajectory|administrative-data) MODE=rolling ;;
+              *) echo "Servicio desconocido: $SERVICE" >&2; exit 1 ;;
+            esac
+          elif [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            if [[ "$MANUAL_STRATEGY" == blue-green ]]; then
+              [[ -n "$MANUAL_TAG" ]] || { echo 'Especifica gateway_tag para Blue-Green manual' >&2; exit 1; }
+              MODE=gateway; SERVICE=gateway; TAG="$MANUAL_TAG"
+            fi
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "service=$SERVICE" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "color=$MANUAL_COLOR" >> "$GITHUB_OUTPUT"
+          echo "Modo=$MODE Servicio=$SERVICE Tag=$TAG"
+      - name: Reconcile Helm resources without reverting image tags
+        if: ${{ steps.request.outputs.mode == 'reconcile' }}
+        shell: bash
         run: |
-          TAG="${{ inputs.gateway_tag }}"
-          COLOR="${{ inputs.target_color }}"
-          ./scripts/blue-green-release.sh "${TAG}" "${COLOR}"
-
-      - name: Zero-downtime load check during switch (Optional R1.7 verification)
+          set -euo pipefail
+          ACTIVE="$(kubectl get svc gateway -n "$KUBE_NAMESPACE" -o jsonpath='{.spec.selector.version}')"
+          [[ "$ACTIVE" == blue || "$ACTIVE" == green ]] || { echo "Color inválido: $ACTIVE" >&2; exit 1; }
+          helm upgrade microservices ./helm/microservices -n "$KUBE_NAMESPACE" \
+            --reuse-values --set "blueGreen.activeColor=$ACTIVE" --wait --timeout 10m
+      - name: Rolling update requested microservice
+        if: ${{ steps.request.outputs.mode == 'rolling' }}
+        shell: bash
+        env:
+          SERVICE: ${{ steps.request.outputs.service }}
+          TAG: ${{ steps.request.outputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || exit 1
+          ACTIVE="$(kubectl get svc gateway -n "$KUBE_NAMESPACE" -o jsonpath='{.spec.selector.version}')"
+          [[ "$ACTIVE" == blue || "$ACTIVE" == green ]] || exit 1
+          helm upgrade microservices ./helm/microservices -n "$KUBE_NAMESPACE" \
+            --reuse-values --set "blueGreen.activeColor=$ACTIVE" \
+            --set-string "services.$SERVICE.image.tag=$TAG" --wait --timeout 10m
+          kubectl rollout status "deployment/$SERVICE" -n "$KUBE_NAMESPACE" --timeout=180s
+      - name: Blue-Green release Gateway
+        if: ${{ steps.request.outputs.mode == 'gateway' }}
+        shell: bash
+        env:
+          TAG: ${{ steps.request.outputs.tag }}
+          COLOR: ${{ steps.request.outputs.color }}
+        run: ./scripts/blue-green-release.sh "$TAG" "$COLOR"
+      - name: Optional load verification
         if: ${{ inputs.run_load_verification == true }}
         run: |
-          ACTIVE="$(kubectl get svc gateway -n "${KUBE_NAMESPACE}" -o jsonpath='{.spec.selector.version}')"
-          if [[ "${ACTIVE}" == "blue" ]]; then NEXT="green"; else NEXT="blue"; fi
-          DURATION_SEC=30 SWITCH_AT=10 ./scripts/load/blue-green-during-load.sh "${NEXT}"
-
-      - name: Verify Ingress, Services & Alertmanager Rules (R1.6 / R1.7)
+          ACTIVE="$(kubectl get svc gateway -n "$KUBE_NAMESPACE" -o jsonpath='{.spec.selector.version}')"
+          if [[ "$ACTIVE" == blue ]]; then NEXT=green; else NEXT=blue; fi
+          DURATION_SEC=30 SWITCH_AT=10 ./scripts/load/blue-green-during-load.sh "$NEXT"
+      - name: Verify deployments
         run: |
           ./scripts/blue-green-switch.sh status
-          kubectl get deploy,pods,svc,ingress -n "${KUBE_NAMESPACE}"
-          kubectl get prometheusrule -n "${MONITORING_NAMESPACE}" || true
-
-      - name: Report SUCCESS metric to Pushgateway
+          kubectl get deploy,pods,svc,ingress -n "$KUBE_NAMESPACE"
+          kubectl get prometheusrule -n "$MONITORING_NAMESPACE" || true
+      - name: Report SUCCESS metric
         if: success()
         run: |
           START="${{ steps.timer.outputs.start }}"
-          DURATION=$(( $(date +%s) - START ))
-          ./scripts/report-pipeline-metric.sh success "${DURATION}" "github_actions_cd"
-
-      - name: Report FAILURE metric to Pushgateway (Triggers BuildFallidoConsecutivo R1.6)
+          ./scripts/report-pipeline-metric.sh success "$(( $(date +%s) - START ))" github_actions_cd
+      - name: Report FAILURE metric
         if: failure()
         run: |
           START="${{ steps.timer.outputs.start }}"
-          DURATION=$(( $(date +%s) - ${START:-$(date +%s)} ))
-          ./scripts/report-pipeline-metric.sh failure "${DURATION}" "github_actions_cd"
+          ./scripts/report-pipeline-metric.sh failure "$(( $(date +%s) - ${START:-$(date +%s)} ))" github_actions_cd

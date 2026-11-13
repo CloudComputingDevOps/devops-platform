@@ -1,3 +1,4 @@
+
 {{- range $name, $service := .Values.services }}
 {{- if $service.http }}
 ---
@@ -11,7 +12,7 @@ metadata:
     bluegreen.active: {{ $.Values.blueGreen.activeColor | quote }}
     {{- end }}
 spec:
-  type: ClusterIP
+  type: {{ default "ClusterIP" $service.type }}
   selector:
     app: {{ $name }}
     {{- if and (eq $name "gateway") $.Values.blueGreen.enabled }}
@@ -22,5 +23,8 @@ spec:
       port: {{ $service.port }}
       targetPort: {{ $service.port }}
       protocol: TCP
+      {{- if and (eq (default "ClusterIP" $service.type) "NodePort") $service.nodePort }}
+      nodePort: {{ $service.nodePort }}
+      {{- end }}
 {{- end }}
 {{- end }}

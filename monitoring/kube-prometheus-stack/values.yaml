@@ -82,61 +82,63 @@ prometheus:
         honor_labels: true
         static_configs:
           - targets: ["pushgateway.monitoring.svc.cluster.local:9091"]
-    additionalPrometheusRulesMap:
-      devops-platform:
-        groups:
-          - name: devops-integrante3.rules
-            interval: 30s
-            rules:
-              # R1.6 #1 — Pod caído / no Ready
-              - alert: PodCaido
-                expr: |
-                  sum by (namespace, pod) (
-                    kube_pod_status_ready{namespace="devops", condition="true"}
-                  ) == 0
-                  or
-                  sum by (namespace, pod) (
-                    kube_pod_status_phase{namespace="devops", phase=~"Failed|Unknown"}
-                  ) > 0
-                for: 1m
-                labels:
-                  severity: critical
-                  team: devops
-                annotations:
-                  summary: "Pod caído: {{ $labels.pod }}"
-                  description: "El pod {{ $labels.pod }} en devops no está Ready / está Failed|Unknown durante 1m."
 
-              # R1.6 #2 — CPU > 80% del límite
-              - alert: PodCPUAlto
-                expr: |
-                  (
-                    sum by (namespace, pod, container) (
-                      rate(container_cpu_usage_seconds_total{namespace="devops", container!="", container!="POD"}[5m])
-                    )
-                    /
-                    sum by (namespace, pod, container) (
-                      kube_pod_container_resource_limits{namespace="devops", resource="cpu", container!=""}
-                    )
-                  ) > 0.80
-                for: 2m
-                labels:
-                  severity: warning
-                  team: devops
-                annotations:
-                  summary: "CPU > 80% en {{ $labels.pod }}/{{ $labels.container }}"
-                  description: "Uso de CPU por encima del 80% del límite durante 2m."
+# Reglas de alerta de R1.6. Van en el nivel principal: el chart ignora esta clave si queda dentro de prometheusSpec.
+additionalPrometheusRulesMap:
+  devops-platform:
+    groups:
+      - name: devops-integrante3.rules
+        interval: 30s
+        rules:
+          # R1.6 #1 — Pod caído / no Ready
+          - alert: PodCaido
+            expr: |
+              sum by (namespace, pod) (
+                kube_pod_status_ready{namespace="devops", condition="true"}
+              ) == 0
+              or
+              sum by (namespace, pod) (
+                kube_pod_status_phase{namespace="devops", phase=~"Failed|Unknown"}
+              ) > 0
+            for: 1m
+            labels:
+              severity: critical
+              team: devops
+            annotations:
+              summary: "Pod caído: {{ $labels.pod }}"
+              description: "El pod {{ $labels.pod }} en devops no está Ready / está Failed|Unknown durante 1m."
 
-              # R1.6 #3 — Builds fallidos consecutivos (métrica en Pushgateway)
-              - alert: BuildFallidoConsecutivo
-                expr: |
-                  cicd_pipeline_consecutive_failures > 1
-                for: 1m
-                labels:
-                  severity: critical
-                  team: devops
-                annotations:
-                  summary: "Builds fallidos consecutivos"
-                  description: "Hay {{ $value }} fallos consecutivos de pipeline reportados en Pushgateway."
+          # R1.6 #2 — CPU > 80% del límite
+          - alert: PodCPUAlto
+            expr: |
+              (
+                sum by (namespace, pod, container) (
+                  rate(container_cpu_usage_seconds_total{namespace="devops", container!="", container!="POD"}[5m])
+                )
+                /
+                sum by (namespace, pod, container) (
+                  kube_pod_container_resource_limits{namespace="devops", resource="cpu", container!=""}
+                )
+              ) > 0.80
+            for: 2m
+            labels:
+              severity: warning
+              team: devops
+            annotations:
+              summary: "CPU > 80% en {{ $labels.pod }}/{{ $labels.container }}"
+              description: "Uso de CPU por encima del 80% del límite durante 2m."
+
+          # R1.6 #3 — Builds fallidos consecutivos (métrica en Pushgateway)
+          - alert: BuildFallidoConsecutivo
+            expr: |
+              cicd_pipeline_consecutive_failures > 1
+            for: 1m
+            labels:
+              severity: critical
+              team: devops
+            annotations:
+              summary: "Builds fallidos consecutivos"
+              description: "Hay {{ $value }} fallos consecutivos de pipeline reportados en Pushgateway."
 
 grafana:
   enabled: true

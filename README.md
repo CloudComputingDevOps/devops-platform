@@ -47,7 +47,7 @@ flowchart TB
         INGRESS["Ingress NGINX  gateway.local"]
         SERVICE["Service gateway  Port: 3000"]
         BLUE("Gateway")
-        NATS["NATS  4222"]
+        NATS["NATS Port: 4222"]
         ADMIN["Administrative Data"]
         USERS["Users"]
         TRAJECTORY["Trajectory"]
@@ -482,10 +482,10 @@ Para ver Grafana desde Windows con Vagrant, conserva el port-forward de la VM y 
 Primero confirma que la ruta elegida responde 2xx. Con el port-forward del Gateway abierto:
 
 ```bash
-BASE_URL=http://localhost:3000 REQUEST_PATH=/api/areas VUS=10 DURATION=30s \
+BASE_URL=http://localhost:3000 REQUEST_PATH='/api/administrative-data/areas/find-all-areas?page=1&limit=10' VUS=10 DURATION=30s \
   bash scripts/load/run-k6.sh
 
-BASE_URL=http://localhost:3000 PATH_SUFFIX=/api/areas THREADS=2 CONNECTIONS=20 DURATION=30s \
+BASE_URL=http://localhost:3000 PATH_SUFFIX='/api/administrative-data/areas/find-all-areas?page=1&limit=10' THREADS=2 CONNECTIONS=20 DURATION=30s \
   bash scripts/load/run-wrk.sh
 ```
 

@@ -9,7 +9,7 @@
 | Integrante | Nombre completo |
 | --- | --- |
 | 1 | Camila Paz |
-| 2 | Juan Penagos |
+| 2 | David Penagos |
 | 3 | Esteban Triviño |
 | 4 | Juan Zuluaga |
 

@@ -28,7 +28,7 @@ Este documento es la guía paso a paso del proyecto. Está pensado para que una 
 
 | Parte | Secciones | Para qué sirve |
 | --- | --- | --- |
-| Antes de empezar | Glosario y "Qué necesitas y qué entrega el equipo" | Vocabulario básico y lista de todo lo que debes tener **antes** del primer comando |
+| Antes de empezar | Arquitectura, organización del repositorio, glosario y "Qué necesitas y qué entrega el equipo" | Vocabulario básico y lista de todo lo que debes tener **antes** del primer comando |
 | Levantar la plataforma | 1 a 9 | Desplegar el backend en Minikube, abrir el frontend, instalar el monitoreo, actualizar con Blue-Green y diagnosticar fallos |
 | Integración continua | 10 | Cómo están montados las ramas protegidas, el pipeline de GitHub Actions y el registro de imágenes, y cómo comprobar que funcionan |
 | Manual vs. automatizado | 11 | Comparación de tiempos entre construir y publicar a mano y hacerlo con el pipeline, con los comandos para repetir la medición |
@@ -86,6 +86,39 @@ flowchart TB
     class ADMIN,USERS,TRAJECTORY service
     class DB_ADMIN,DB_USERS,DB_TRAJECTORY data
 ```
+
+## Organización del repositorio
+
+Así está organizado el repositorio `devops-platform`, para que sepas dónde está cada cosa cuando el README te pida abrir un archivo o ejecutar un script.
+
+```text
+devops-platform/
+├── .github/
+│   └── workflows/            # Workflow de CD (cd.yml)
+├── docs/
+│   ├── infraestructura.md
+│   ├── despliegue-avanzado-y-alertas.md   # CD, Blue-Green, alertas, carga y fallos
+│   └── guia-reproducible.md               # Paso a paso completo y guion de demostración
+├── helm/
+│   ├── microservices/        # Incluye Gateway blue/green + Ingress
+│   └── nats/
+├── kubernetes/
+│   └── namespace.yaml
+├── monitoring/
+│   ├── kube-prometheus-stack/   # Prometheus + Alertmanager (3 reglas)
+│   ├── alertmanager-webhook/    # Receptor de notificaciones
+│   └── gateway-metrics/         # Parche de métricas para el Gateway
+├── scripts/
+│   ├── deploy-stack.sh
+│   ├── install-monitoring.sh
+│   ├── blue-green-switch.sh
+│   ├── load/                    # wrk + k6
+│   └── failures/                # Escenarios de fallo
+├── secrets/examples/            # Plantillas .env (sin secretos reales)
+└── README.md
+```
+
+> La estructura muestra los archivos relevantes para infraestructura. Pueden existir otros archivos auxiliares generados por Helm.
 
 ## Glosario rápido
 
@@ -756,3 +789,5 @@ Si el primero falla y el segundo responde `PONG`, es el DNS. Dos soluciones:
 - El pipeline además publica la imagen en GHCR (inicio de sesión y subida), y a mano **no se midió** ese paso. Incluirlo aumentaría el tiempo manual.
 - Solo se midió Gateway a mano. Los demás servicios tienen dependencias de tamaño parecido, pero no idéntico.
 - El número de vulnerabilidades que reporta `npm ci` cambia con el tiempo (varía de una semana a otra). No uses `npm audit fix --force` a ciegas, porque puede romper el código.
+
+
